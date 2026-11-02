@@ -1,0 +1,6 @@
+{
+  "name": "GLOWVERSE AI",
+  "description": "Luxury Beauty Intelligence, Skin Analysis & Smart eCommerce Platform. Your Skin. Your Style. Your Smarter Beauty Journey.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
