@@ -57,6 +57,7 @@ export interface ParameterMetric {
   label: string;
   explanation: string;
   limitation: string;
+  source?: 'api_analyzed' | 'educational_guidance' | 'simulated';
 }
 
 export interface SkinAnalysisResult {
@@ -64,6 +65,7 @@ export interface SkinAnalysisResult {
   taskId: string;
   mode: 'live-youcam' | 'demo';
   isDemo: boolean;
+  provider?: string;
   analyzedAt: string;
   overallScore: number;
   parameters: {
@@ -80,6 +82,12 @@ export interface SkinAnalysisResult {
   recommendedProductIds: string[];
   disclaimer: string;
   previewImage?: string;
+  sampleId?: string;
+  imageMeta?: {
+    format: string;
+    sizeKb: number;
+    hashPreview: string;
+  };
 }
 
 export interface RoutineItem {

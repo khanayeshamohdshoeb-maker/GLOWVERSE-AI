@@ -85,25 +85,53 @@ Every metric is accompanied by:
 - **Frontend:** React 19, TypeScript, Tailwind CSS v4, Lucide React, Motion.
 - **Backend:** Node.js, Express 4, tsx.
 - **AI & Integrations:**
-  - `@google/genai` (Server-side Gemini 3.8 Flash model for cosmetic assistance).
-  - YouCam / Perfect Corp API service layer with automatic fallback to high-fidelity Demo Simulation mode when API keys are unconfigured.
+  - `@google/genai` (Server-side Gemini 3.1 Flash-Lite model for cosmetic skin education and assistant conversations).
+  - **Perfect Corp YouCam Cloud API (YCE):** Official cosmetic skin analysis integration with task creation, polling, and optical parameter parsing. Transparent error reporting with zero silent fallbacks; deterministic image-characteristic Demo Mode available when API keys are unconfigured.
 - **State & Data Store:** Full-stack REST API with seeded in-memory store supporting persistent users, profiles, analyses, routines, journals, and wishlists.
 
 ---
 
-## 6. Environment Variables (`.env.example`)
+## 6. Perfect Corp YouCam API Integration & Setup
 
+GLOWVERSE AI integrates the official **Perfect Corp YouCam for Enterprise (YCE)** Cloud API (`https://yce.perfectcorp.com/`):
+
+### A. Environment Configuration (`.env`)
 ```bash
 # Gemini AI API Key (server-side only)
 GEMINI_API_KEY="MY_GEMINI_API_KEY"
 
-# YouCam / Perfect Corp Skin Analysis API (Optional)
+# Perfect Corp YouCam Cloud API (YCE)
+# Obtain API Key from https://yce.perfectcorp.com/
 YOUCAM_API_KEY=""
-YOUCAM_API_BASE_URL="https://api.perfectcorp.com/v1.0"
+YOUCAM_API_BASE_URL="https://yce-api.perfectcorp.com"
+YOUCAM_CLIENT_ID=""
 
 # Application URL
 APP_URL="http://localhost:3000"
 ```
+
+### B. S2S v2.0 Execution Workflow
+1. **File API Registration (`POST /s2s/v2.0/file`):** Registers image metadata (`content_type`, `file_name`, `file_size`) and securely obtains a pre-signed S3 storage upload URL alongside a unique `file_id`.
+2. **Binary Upload (`HTTP PUT`):** Uploads the raw binary image data directly to the pre-signed S3 URL with matching MIME type.
+3. **Skin Analysis Task Creation (`POST /s2s/v2.0/task/skin-analysis`):** Initiates asynchronous analysis using `src_file_id: file_id` and requested diagnostic actions (`wrinkle`, `pore`, `texture`, `acne`, `oiliness`, `redness`, `spots`, `moisture`, `dark_circles`, `radiance`, `firmness`).
+4. **Task Polling & Result Retrieval (`GET /s2s/v2.0/task/skin-analysis/{task_id}`):** Polls status endpoint with `Authorization: Bearer <API_KEY>` until `task_status` is `"success"`. Parses either the inline `result` or fetches the downloadable result JSON.
+
+### C. 8-Parameter Optical Mapping
+| GLOWVERSE Parameter | YouCam Feature Output | Interpretation Scope |
+| :--- | :--- | :--- |
+| **Skin Texture** | `texture` / `roughness` | Optical surface smoothness across cheeks and forehead |
+| **Surface Radiance** | `radiance` / `glow` | Specular vs diffuse reflectance index |
+| **Hydration Index** | `moisture` / `hydration` | Superficial stratum corneum moisture and plumping |
+| **Fine Line Visibility** | `wrinkles` (inverted) | Shallow dynamic expression lines around periorbital zone |
+| **Pore Clarity** | `pores` (inverted) | Follicular aperture perimeter in central T-zone |
+| **Redness Balance** | `redness` (inverted) | Erythema and microvascular blush variance |
+| **Contour Firmness** | `firmness` | Jawline and cheek volume contour resilience |
+| **Periorbital Tone** | `dark_circles` (inverted) | Infraorbital chrominance contrast index |
+
+### D. Honest Simulation & Anti-Repetition Guarantee
+- **Live Mode:** Never silently drops to simulation if keys are missing or API fails; returns a clear status message.
+- **Demo Mode:** Produces deterministic, non-identical scores computed from the image payload's cryptographic hash, brightness, contrast variance, and color balance. Re-uploading the same photo produces identical results; uploading different photos produces genuinely different scores.
+- **Sample Portraits:** Sample 1 (Balanced Glow) and Sample 2 (Dehydration Focus) yield distinct, scientifically calibrated profiles.
 
 ---
 

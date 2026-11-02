@@ -185,7 +185,7 @@ app.get('/api/skin/config', (_req: Request, res: Response) => {
 
 app.post('/api/skin/analyze', async (req: Request, res: Response) => {
   try {
-    const { imageDataUri, consent } = req.body;
+    const { imageDataUri, consent, mode, requestedMode, sampleId } = req.body;
     if (!imageDataUri) {
       return res.status(400).json({ error: 'Image data is required.' });
     }
@@ -193,10 +193,13 @@ app.post('/api/skin/analyze', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Consent is required for skin analysis.' });
     }
 
-    const task = await youCamService.submitAnalysis(imageDataUri, Boolean(consent));
+    const targetMode = (requestedMode || mode || 'auto') as 'live' | 'demo' | 'auto';
+    const task = await youCamService.submitAnalysis(imageDataUri, Boolean(consent), targetMode, sampleId);
     return res.status(202).json(task);
   } catch (err: any) {
-    return res.status(400).json({ error: err.message || 'Analysis submission failed.' });
+    const isCredentialsMissing = err.message?.includes('YOUCAM_API_KEY') || err.message?.includes('temporarily unavailable');
+    const statusCode = isCredentialsMissing ? 503 : 400;
+    return res.status(statusCode).json({ error: err.message || 'Analysis submission failed.' });
   }
 });
 

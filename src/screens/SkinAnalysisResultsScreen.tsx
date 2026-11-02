@@ -11,11 +11,16 @@ import {
   ChevronUp,
   Bookmark,
   Share2,
-  AlertCircle
+  AlertCircle,
+  RotateCcw,
+  Camera,
+  CheckCircle2,
+  Cpu,
+  Layers
 } from 'lucide-react';
 
 export const SkinAnalysisResultsScreen: React.FC = () => {
-  const { activeAnalysis, products, ingredients, navigateTo, showToast } = useApp();
+  const { activeAnalysis, products, ingredients, navigateTo, showToast, setActiveAnalysis } = useApp();
 
   const [expandedParam, setExpandedParam] = useState<string | null>('hydration');
 
@@ -25,56 +30,65 @@ export const SkinAnalysisResultsScreen: React.FC = () => {
     taskId: 'task-demo-default',
     mode: 'demo' as const,
     isDemo: true,
+    provider: 'GLOWVERSE Deterministic Cosmetic Simulation Engine',
     analyzedAt: new Date().toISOString(),
-    overallScore: 84,
+    overallScore: 88,
     parameters: {
       texture: {
-        score: 82,
-        label: 'Refined Surface',
+        score: 86,
+        label: 'Silky Surface Reflectance',
         explanation: 'Optical evaluation of surface micro-roughness. Higher score denotes smoother light reflectance across cheek and forehead zones.',
-        limitation: 'Optical surface reflectance does not evaluate subsurface dermal cellular layers.'
+        limitation: 'Optical surface reflectance does not evaluate subsurface dermal cellular layers.',
+        source: 'simulated' as const
       },
       radiance: {
-        score: 86,
+        score: 91,
         label: 'Healthy Luminous Glow',
-        explanation: 'Measures high-specular diffused light scatter, indicating balanced lipid balance and adequate stratum corneum hydration.',
-        limitation: 'Lighting direction and environment ambient intensity can influence optical luminosity values.'
+        explanation: 'Measures high-specular diffused light scatter, indicating balanced lipid film and adequate stratum corneum hydration.',
+        limitation: 'Lighting direction and environment ambient intensity can influence optical luminosity values.',
+        source: 'simulated' as const
       },
       hydration: {
-        score: 79,
-        label: 'Moderate Dehydration',
+        score: 84,
+        label: 'Optimal Plump Hydration',
         explanation: 'Superficial cutaneous moisture assessment based on micro-crease patterns and epidermal plumpness.',
-        limitation: 'Non-invasive visual imaging estimates superficial barrier comfort; it does not replace corneometer capacitance measurements.'
+        limitation: 'Non-invasive visual imaging estimates superficial barrier comfort; it does not replace corneometer capacitance measurements.',
+        source: 'simulated' as const
       },
       fineLines: {
-        score: 85,
+        score: 89,
         label: 'Minimal Expression Lines',
         explanation: 'Calculated contrast depth of dynamic and shallow static lines around periorbital and nasolabial contours.',
-        limitation: 'Facial expressions during photo capture can cause slight metric variations.'
+        limitation: 'Facial expressions during photo capture can cause slight metric variations.',
+        source: 'simulated' as const
       },
       pores: {
-        score: 88,
+        score: 87,
         label: 'Refined & Clear',
         explanation: 'Analyzes visual density and perimeter of follicular openings in the T-zone and central cheek region.',
-        limitation: 'Camera sensor resolution and distance to lens directly impact pore diameter calculations.'
+        limitation: 'Camera sensor resolution and distance to lens directly impact pore diameter calculations.',
+        source: 'simulated' as const
       },
       redness: {
-        score: 91,
+        score: 93,
         label: 'Even & Calm Tone',
         explanation: 'Chroma distribution map evaluating capillary blushing or localized erythema across cheeks and nasal wings.',
-        limitation: 'Cannot diagnose vascular conditions such as rosacea or dermatitis.'
+        limitation: 'Cannot diagnose vascular conditions such as rosacea or dermatitis.',
+        source: 'simulated' as const
       },
       firmness: {
-        score: 83,
+        score: 88,
         label: 'Resilient Elasticity',
         explanation: 'Visual assessment of facial contour definition and gravitational sag markers along jawline.',
-        limitation: 'Visual heuristics approximate skin resilience without physical elastometry testing.'
+        limitation: 'Visual heuristics approximate skin resilience without physical elastometry testing.',
+        source: 'simulated' as const
       },
       darkCircles: {
-        score: 78,
+        score: 82,
         label: 'Mild Periorbital Shadowing',
         explanation: 'Chrominance contrast beneath lower eyelid margin, identifying vascular or structural shadow undertones.',
-        limitation: 'Fatigue, bone structure, and ambient overhead shadows naturally accentuate periorbital depth.'
+        limitation: 'Fatigue, bone structure, and ambient overhead shadows naturally accentuate periorbital depth.',
+        source: 'simulated' as const
       }
     },
     recommendedIngredientIds: ['hyaluronic-acid', 'ceramides', 'niacinamide', 'vitamin-c'],
@@ -88,52 +102,124 @@ export const SkinAnalysisResultsScreen: React.FC = () => {
   const matchedProducts = products.filter(p => analysis.recommendedProductIds.includes(p.id));
   const matchedIngredients = ingredients.filter(i => analysis.recommendedIngredientIds.includes(i.id));
 
+  const handleStartFreshScan = () => {
+    // Clear active analysis to prevent any cached score confusion
+    setActiveAnalysis(null);
+    navigateTo('skin-upload');
+  };
+
   const handleSaveToJournal = () => {
     showToast('Saved analysis summary to your personal beauty journal', 'success');
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-12">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-10">
       
-      {/* Top Banner with Mode & Date */}
+      {/* Top Banner with Mode & Date & Fresh Scan Action */}
       <div className="bg-[#FFFFFF] border border-[#E8DCCB] rounded-2xl p-6 sm:p-8 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div>
-          <div className="flex items-center gap-2 mb-2 text-xs text-[#302B27]/70 font-sans">
-            <span className="font-bold uppercase tracking-wider text-[#96734C]">
-              {analysis.isDemo ? 'DEMO SIMULATION MODE' : 'LIVE YOUCAM API SCAN'}
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2 text-xs font-sans">
+            {/* Live vs Demo Badge */}
+            <span className={`px-2.5 py-1 rounded-md text-[11px] font-semibold tracking-wide uppercase ${
+              analysis.isDemo
+                ? 'bg-[#EAD9D2] text-[#302B27] border border-[#E8DCCB]'
+                : 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+            }`}>
+              {analysis.isDemo ? 'DEMO SIMULATION MODE' : 'LIVE PERFECT CORP YOUCAM API'}
             </span>
-            <span aria-hidden="true">·</span>
-            <span>Conducted on {new Date(analysis.analyzedAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+
+            <span className="text-[#302B27]/40" aria-hidden="true">•</span>
+
+            <span className="text-[#302B27]/70">
+              Conducted on {new Date(analysis.analyzedAt).toLocaleDateString([], {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric'
+              })} at {new Date(analysis.analyzedAt).toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit'
+              })}
+            </span>
           </div>
 
           <h1 className="text-3xl sm:text-4xl font-serif text-[#302B27]">
             Skin Intelligence Assessment
           </h1>
-          <p className="text-xs sm:text-sm text-[#302B27]/70 font-sans mt-1">
-            Optical evaluation of 8 skin surface markers synthesized into personalized formulation guidance.
+          <p className="text-xs sm:text-sm text-[#302B27]/70 font-sans max-w-2xl">
+            {analysis.provider || 'Cosmetic Skin Analysis Engine'} · Optical evaluation of 8 skin surface markers synthesized into personalized formulation guidance.
           </p>
+
+          {analysis.imageMeta && (
+            <div className="text-[11px] text-[#302B27]/60 font-mono pt-1">
+              Analyzed {analysis.imageMeta.format} file ({analysis.imageMeta.sizeKb} KB) · Hash signature: {analysis.imageMeta.hashPreview}...
+            </div>
+          )}
         </div>
 
-        <div className="flex items-center gap-4">
+        {/* Score & Action Buttons */}
+        <div className="flex items-center gap-4 sm:gap-6 self-start md:self-center">
           <div className="text-right">
             <div className="text-xs uppercase tracking-widest text-[#96734C] font-semibold">Overall Index</div>
             <div className="text-4xl font-serif text-[#302B27] tabular-nums font-bold">
               {analysis.overallScore}<span className="text-lg text-[#302B27]/50 font-sans font-normal"> / 100</span>
             </div>
           </div>
-          <button
-            onClick={handleSaveToJournal}
-            className="p-3 bg-[#F8F4ED] hover:bg-[#E8DCCB] border border-[#E8DCCB] rounded-lg text-[#302B27] transition-colors cursor-pointer"
-            title="Save to Journal"
-          >
-            <Bookmark className="w-5 h-5 text-[#96734C]" />
-          </button>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleSaveToJournal}
+              className="p-3 bg-[#F8F4ED] hover:bg-[#E8DCCB] border border-[#E8DCCB] rounded-lg text-[#302B27] transition-colors cursor-pointer"
+              title="Save to Journal"
+            >
+              <Bookmark className="w-5 h-5 text-[#96734C]" />
+            </button>
+            <button
+              onClick={handleStartFreshScan}
+              className="px-4 py-3 bg-[#302B27] hover:bg-[#433C37] text-white rounded-lg text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 shadow-xs"
+              title="Start Fresh Scan"
+            >
+              <RotateCcw className="w-4 h-4 text-[#C6A77D]" />
+              <span>Start Fresh Scan</span>
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* 2. Parameters Radar & Explain My Skin Deep Dive */}
+      {/* Photo Preview & Key Diagnostic Highlights */}
+      {analysis.previewImage && (
+        <div className="bg-[#FFFFFF] border border-[#E8DCCB] rounded-2xl p-5 shadow-xs flex flex-col sm:flex-row items-center gap-5">
+          <div className="w-24 h-24 rounded-xl overflow-hidden border border-[#E8DCCB] shrink-0 bg-[#F8F4ED]">
+            <img
+              src={analysis.previewImage}
+              alt="Analyzed photograph"
+              className="w-full h-full object-cover"
+            />
+          </div>
+          <div className="flex-1 space-y-1 text-xs">
+            <div className="font-semibold text-[#302B27] uppercase tracking-wider text-[11px]">
+              Optical Frame Analyzed
+            </div>
+            <p className="text-[#302B27]/70 leading-relaxed">
+              Diagnostic measurements were computed from this photograph. Each metric reflects surface reflectance, chroma distribution, and facial geometry captured at time of scan.
+            </p>
+            <div className="flex flex-wrap gap-2 pt-1 text-[11px] text-[#96734C] font-medium">
+              <span>• Zero permanent biometric archiving</span>
+              <span>• Ephemeral memory-only processing</span>
+              <span>• Non-clinical cosmetic assessment</span>
+            </div>
+          </div>
+          <button
+            onClick={handleStartFreshScan}
+            className="px-3 py-1.5 border border-[#E8DCCB] hover:border-[#96734C] rounded-lg text-xs font-semibold text-[#302B27] shrink-0 transition-colors cursor-pointer"
+          >
+            Upload Different Photo
+          </button>
+        </div>
+      )}
+
+      {/* 2. 8 Parameters Radar & Explain My Skin Deep Dive */}
       <div className="space-y-6">
-        <div className="flex items-center justify-between border-b border-[#E8DCCB] pb-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-[#E8DCCB] pb-3 gap-2">
           <div>
             <div className="text-xs font-semibold uppercase tracking-widest text-[#96734C]">
               Explain My Skin (Feature C)
@@ -142,12 +228,21 @@ export const SkinAnalysisResultsScreen: React.FC = () => {
               8-Parameter Optical Breakdown & Scientific Scope
             </h2>
           </div>
-          <span className="text-xs text-[#302B27]/60 hidden sm:inline-block">Click any metric to inspect biological scope & limitations</span>
+          <span className="text-xs text-[#302B27]/60">
+            Click any metric to inspect biological scope & limitations
+          </span>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {paramEntries.map(([key, param]) => {
             const isExpanded = expandedParam === key;
+            const paramSourceLabel =
+              param.source === 'api_analyzed'
+                ? 'YouCam API Analyzed'
+                : param.source === 'educational_guidance'
+                ? 'Cosmetic Guidance'
+                : 'Demo Simulation';
+
             return (
               <div
                 key={key}
@@ -157,12 +252,20 @@ export const SkinAnalysisResultsScreen: React.FC = () => {
                 onClick={() => setExpandedParam(isExpanded ? null : key)}
               >
                 <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
+                  <div className="flex-1 pr-3">
+                    <div className="flex flex-wrap items-center gap-2">
                       <span className="text-sm font-semibold capitalize text-[#302B27]">
                         {key.replace(/([A-Z])/g, ' $1')}
                       </span>
                       <span className="text-xs text-[#96734C] font-medium">({param.label})</span>
+
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${
+                        param.source === 'api_analyzed'
+                          ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                          : 'bg-[#F8F4ED] text-[#302B27]/60 border border-[#E8DCCB]'
+                      }`}>
+                        {paramSourceLabel}
+                      </span>
                     </div>
 
                     {/* Progress Bar */}
@@ -219,7 +322,7 @@ export const SkinAnalysisResultsScreen: React.FC = () => {
           </div>
           <button
             onClick={() => navigateTo('ingredients')}
-            className="text-xs font-semibold text-[#96734C] hover:underline flex items-center gap-1"
+            className="text-xs font-semibold text-[#96734C] hover:underline flex items-center gap-1 cursor-pointer"
           >
             <span>Explore All 10 Ingredients</span>
             <ArrowRight className="w-3.5 h-3.5" />
@@ -259,7 +362,7 @@ export const SkinAnalysisResultsScreen: React.FC = () => {
           </div>
           <button
             onClick={() => navigateTo('products')}
-            className="text-xs font-semibold text-[#302B27] hover:text-[#96734C] flex items-center gap-1"
+            className="text-xs font-semibold text-[#302B27] hover:text-[#96734C] flex items-center gap-1 cursor-pointer"
           >
             <span>View Full Catalogue</span>
             <ArrowRight className="w-3.5 h-3.5" />
