@@ -69,6 +69,217 @@ const tasks = new Map<string, {
   progress?: number;
 }>();
 
+/**
+ * Official Perfect Corp YouCam S2S v2.0 Standard Definition (SD) Supported Actions
+ * Whitelist according to official Perfect Corp AI Skin Analysis API Specification:
+ * - 'wrinkle'           : Expression lines and facial creases
+ * - 'pore'              : Pore visibility and follicle distribution
+ * - 'texture'           : Micro-topographic surface smoothness
+ * - 'acne'              : Blemish and lesion detection
+ * - 'oiliness'          : Sebum distribution across T-zone and U-zone
+ * - 'redness'           : Vascular flush / erythema balance
+ * - 'age_spot'          : Melanin concentration / hyperpigmentation spots (replaces invalid 'spots'/'spot')
+ * - 'moisture'          : Stratum corneum hydration level
+ * - 'dark_circle_v2'    : Infraorbital chrominance / under-eye tone (replaces invalid 'dark_circles')
+ * - 'radiance'          : Specular reflectance and epidermal luminosity
+ * - 'firmness'          : Contour elasticity and resilience
+ * - 'eye_bag'           : Infraorbital fluid retention / eye bags
+ * - 'droopy_upper_eyelid': Upper eyelid contour sag
+ * - 'droopy_lower_eyelid': Lower eyelid contour sag
+ * - 'tear_trough'       : Infraorbital depression line
+ * - 'skin_type'         : Overall facial skin type categorization
+ *
+ * NOTE: Simultaneous use of SD and HD (hd_*) actions is strictly rejected with HTTP 400.
+ */
+export const OFFICIAL_YOUCAM_SD_ACTIONS = [
+  'wrinkle',
+  'pore',
+  'texture',
+  'acne',
+  'oiliness',
+  'redness',
+  'age_spot',
+  'moisture',
+  'dark_circle_v2',
+  'radiance',
+  'firmness'
+] as const;
+
+/**
+ * Normalization dictionary mapping UI parameter names, legacy names, and numeric action IDs
+ * to official Perfect Corp YouCam SD string identifiers.
+ * This guarantees numeric values (e.g. 6 and 8) or plural typos ('spots', 'dark_circles')
+ * are cleanly mapped to their supported API actions.
+ */
+export const YOUCAM_ACTION_MAPPING: Record<string | number, string> = {
+  // Legacy numeric action IDs from YouCam SDKs
+  1: 'age_spot',
+  2: 'wrinkle',
+  3: 'texture',
+  4: 'dark_circle_v2',
+  5: 'redness',
+  6: 'age_spot',
+  7: 'moisture',
+  8: 'dark_circle_v2',
+  9: 'pore',
+  10: 'acne',
+  11: 'oiliness',
+  12: 'radiance',
+  13: 'firmness',
+
+  // Common misspelled, plural, or legacy keys
+  spots: 'age_spot',
+  spot: 'age_spot',
+  age_spots: 'age_spot',
+  dark_circles: 'dark_circle_v2',
+  dark_circle: 'dark_circle_v2',
+  darkcircles: 'dark_circle_v2',
+  darkcircle: 'dark_circle_v2',
+  eyebag: 'eye_bag',
+  eyebags: 'eye_bag',
+  wrinkles: 'wrinkle',
+  fine_lines: 'wrinkle',
+  lines: 'wrinkle',
+  pores: 'pore',
+  hydration: 'moisture',
+  glow: 'radiance'
+};
+
+/**
+ * Normalizes an array of actions (numeric IDs or strings) to official Perfect Corp SD actions.
+ */
+export function normalizeDstActions(actions?: (string | number)[]): string[] {
+  if (!actions || !Array.isArray(actions) || actions.length === 0) {
+    return [...OFFICIAL_YOUCAM_SD_ACTIONS];
+  }
+
+  const normalized = new Set<string>();
+  const officialList = OFFICIAL_YOUCAM_SD_ACTIONS as readonly string[];
+
+  for (const act of actions) {
+    if (typeof act === 'number') {
+      const mapped = YOUCAM_ACTION_MAPPING[act];
+      if (mapped) normalized.add(mapped);
+    } else if (typeof act === 'string') {
+      const clean = act.trim().toLowerCase();
+      if (officialList.includes(clean)) {
+        normalized.add(clean);
+      } else if (YOUCAM_ACTION_MAPPING[clean]) {
+        normalized.add(YOUCAM_ACTION_MAPPING[clean]);
+      }
+    }
+  }
+
+  if (normalized.size === 0) {
+    return [...OFFICIAL_YOUCAM_SD_ACTIONS];
+  }
+
+  return Array.from(normalized);
+}
+
+/**
+ * Secure server-side logger that never exposes API keys or secrets in logs
+ */
+function logSecureYouCam(step: string, details: Record<string, any>) {
+  const sanitized = { ...details };
+  if (sanitized.apiKey) sanitized.apiKey = '***REDACTED***';
+  if (sanitized.headers && typeof sanitized.headers === 'object') {
+    sanitized.headers = { ...sanitized.headers };
+    if (sanitized.headers.Authorization) sanitized.headers.Authorization = 'Bearer ***REDACTED***';
+  }
+  if (sanitized.base64 && typeof sanitized.base64 === 'string') {
+    sanitized.base64 = `[binary buffer ${sanitized.base64.length} chars]`;
+  }
+  console.log(`[YouCam S2S] ${step}:`, JSON.stringify(sanitized));
+}
+
+function logSecureYouCamError(step: string, error: any, context?: Record<string, any>) {
+  const sanitized = { ...context };
+  if (sanitized.apiKey) sanitized.apiKey = '***REDACTED***';
+  if (sanitized.headers && typeof sanitized.headers === 'object') {
+    sanitized.headers = { ...sanitized.headers };
+    if (sanitized.headers.Authorization) sanitized.headers.Authorization = 'Bearer ***REDACTED***';
+  }
+  const errText = error?.message || (typeof error === 'string' ? error : JSON.stringify(error));
+  console.error(`[YouCam S2S Error] ${step}:`, errText, sanitized ? JSON.stringify(sanitized) : '');
+}
+
+/**
+ * Robust extractor for Perfect Corp YouCam task errors, mapping error codes
+ * into clear, actionable explanations instead of generic messages.
+ */
+export function extractYouCamError(data: any): string {
+  if (!data) return 'Empty response received from YouCam server.';
+
+  const rawErrorCode =
+    data.error_code ||
+    data.data?.error_code ||
+    data.result?.error_code ||
+    data.code ||
+    data.data?.code ||
+    data.error?.code ||
+    data.data?.error?.code ||
+    (typeof data.error === 'string' && data.error.startsWith('error_') ? data.error : undefined) ||
+    (typeof data.data?.error === 'string' && data.data.error.startsWith('error_') ? data.data.error : undefined);
+
+  const rawMessage =
+    data.error_message ||
+    data.data?.error_message ||
+    data.result?.error_message ||
+    data.message ||
+    data.data?.message ||
+    data.msg ||
+    data.data?.msg ||
+    (typeof data.error === 'string' ? data.error : data.error?.message) ||
+    (typeof data.data?.error === 'string' ? data.data.error : data.data?.error?.message) ||
+    (typeof data.result?.error === 'string' ? data.result.error : data.result?.error?.message);
+
+  const codeExplanations: Record<string, string> = {
+    error_large_face_angle: 'Perfect Corp YouCam requires a straight, level, front-facing portrait looking directly into the camera (within ±15° of center) to accurately map facial skin zones. Please upload a straight front-facing portrait and retry.',
+    error_face_angle: 'The face angle is too extreme. Please ensure the subject is looking directly into the camera.',
+    error_face_too_small: 'The face in the image is too small or distant. Please upload a closer, higher-resolution portrait.',
+    error_multiple_faces: 'Multiple faces were detected in the photo. Please upload a portrait featuring a single individual.',
+    error_no_face: 'No human face was detected in the submitted image. Please upload a clear, well-lit, front-facing portrait.',
+    PHOTO_DETECTION_FAIL: 'No facial landmarks could be detected in the photo. Please upload a clear front-facing portrait with a visible face.',
+    NO_FACE_DETECTED: 'No human face detected. Please ensure your face is clearly visible and centered in the frame.',
+    error_face_parsing: 'Face parsing failed because facial features could not be isolated. Please ensure the face is not occluded by hair, sunglasses, masks, or extreme shadows.',
+    FACE_PARSING_FAIL: 'Facial landmarks could not be aligned. Please ensure your face is upright and fully in the frame.',
+    error_blurry_image: 'The photo appears too blurry for precise optical skin analysis. Please upload a sharper portrait.',
+    error_bad_lighting: 'The image lighting has extreme shadows or glare. Please capture in soft, diffused daylight.',
+    error_nsfw_content_detected: 'The image was flagged by safety moderation filters.',
+    invalid_parameter: 'YouCam rejected one or more analysis parameters.',
+    INPUT_ERROR: 'Invalid image format or parameters received by YouCam.',
+    exceed_max_filesize: 'Image file size exceeds the maximum limit supported by YouCam.',
+    error_inference: 'YouCam AI inference engine encountered a transient processing error. Please retry.',
+    RUNTIME_ERROR: 'YouCam server runtime error during neural network inference.'
+  };
+
+  const explanation = rawErrorCode ? codeExplanations[rawErrorCode] : undefined;
+
+  if (rawMessage && rawMessage !== 'YouCam processing failed.') {
+    if (explanation && !rawMessage.includes(explanation)) {
+      return `${rawMessage} ${explanation}`;
+    }
+    if (rawErrorCode && !rawMessage.includes(String(rawErrorCode))) {
+      return `${rawMessage} (error_code: ${rawErrorCode})${explanation ? ` — ${explanation}` : ''}`;
+    }
+    return rawMessage;
+  }
+
+  if (rawErrorCode) {
+    return explanation
+      ? `Analysis error (${rawErrorCode}): ${explanation}`
+      : `YouCam analysis rejected with code: ${rawErrorCode}. Please try a clear, front-facing portrait.`;
+  }
+
+  try {
+    const summary = typeof data === 'object' ? JSON.stringify(data).substring(0, 160) : String(data);
+    return `YouCam reported task status error (${data.task_status || data.status || 'unknown'}): ${summary}`;
+  } catch {
+    return 'YouCam skin analysis engine reported task status error. Please try another clear front-facing photo.';
+  }
+}
+
 export class YouCamService {
   private apiKey: string | undefined;
   private clientId: string | undefined;
@@ -134,7 +345,8 @@ export class YouCamService {
     imageDataUri: string,
     userConsented: boolean,
     requestedMode: 'live' | 'demo' | 'auto' = 'auto',
-    sampleId?: string
+    sampleId?: string,
+    customActions?: (string | number)[]
   ): Promise<YouCamTaskResponse> {
     if (!userConsented) {
       throw new Error('Explicit cosmetic consent is required for image processing.');
@@ -161,10 +373,29 @@ export class YouCamService {
       );
     }
 
+    // Safeguard: Sample portraits and SVG vector graphics are calibrated presets for Demo Mode
+    if (sampleId && (imageDataUri.startsWith('data:image/svg') || sampleId.startsWith('sample-'))) {
+      if (requestedMode === 'live') {
+        throw new Error(
+          'Sample portraits are calibrated cosmetic presets for Demo Simulation Mode. To perform a Live YouCam API analysis, please upload a genuine photographic portrait (JPEG, PNG, or WebP) with a visible human face.'
+        );
+      }
+      return this.submitDemoAnalysis(imageDataUri, imageInfo, sampleId);
+    }
+
+    if (imageDataUri.startsWith('data:image/svg')) {
+      if (requestedMode === 'live') {
+        throw new Error(
+          'Vector graphics and SVG illustrations cannot be processed by the Live YouCam facial analysis model. Please upload a genuine photographic portrait (JPEG, PNG, or WebP) with a clearly visible human face.'
+        );
+      }
+      return this.submitDemoAnalysis(imageDataUri, imageInfo, sampleId);
+    }
+
     const shouldRunLive = (requestedMode === 'live') || (requestedMode === 'auto' && isLiveConfigured);
 
     if (shouldRunLive) {
-      return await this.submitLiveAnalysis(imageDataUri, imageInfo);
+      return await this.submitLiveAnalysis(imageDataUri, imageInfo, customActions);
     }
 
     // Run Demo Mode (Deterministic, Non-Static Simulation)
@@ -175,11 +406,12 @@ export class YouCamService {
    * Official Perfect Corp YouCam S2S v2.0 Workflow:
    * Step 1: POST /s2s/v2.0/file (Request pre-signed upload URL and file_id)
    * Step 2: HTTP PUT binary image to pre-signed S3 upload URL
-   * Step 3: POST /s2s/v2.0/task/skin-analysis (Submit task with file_id)
+   * Step 3: POST /s2s/v2.0/task/skin-analysis (Submit task with src_file_id and validated SD dst_actions)
    */
   private async submitLiveAnalysis(
     imageDataUri: string,
-    imageInfo: { format: string; sizeKb: number; base64: string }
+    imageInfo: { format: string; sizeKb: number; base64: string },
+    customActions?: (string | number)[]
   ): Promise<YouCamTaskResponse> {
     const baseUrl = this.getBaseUrl();
     const controller = new AbortController();
@@ -202,6 +434,13 @@ export class YouCamService {
       if (this.clientId) {
         authHeaders['X-CLIENT-ID'] = this.clientId;
       }
+
+      logSecureYouCam('Step 1: File Registration API Request', {
+        endpoint: fileApiEndpoint,
+        mimeType,
+        fileSize: buffer.length,
+        hasClientId: Boolean(this.clientId)
+      });
 
       const fileRegBody = JSON.stringify({
         files: [
@@ -229,14 +468,19 @@ export class YouCamService {
         } catch {
           // keep text
         }
-        throw new Error(`YouCam File API returned HTTP ${fileRegRes.status} on ${fileApiEndpoint}: ${parsedError}`);
+        logSecureYouCamError('Step 1 File Registration Failed', parsedError, {
+          httpStatus: fileRegRes.status,
+          endpoint: fileApiEndpoint
+        });
+        throw new Error(`Step 1 (File Registration) failed: YouCam File API returned HTTP ${fileRegRes.status} on ${fileApiEndpoint}: ${parsedError}`);
       }
 
       const fileRegData = await fileRegRes.json();
       const fileItem = fileRegData?.data?.files?.[0] || fileRegData?.files?.[0] || fileRegData?.result?.files?.[0];
 
       if (!fileItem || !fileItem.file_id) {
-        throw new Error(`YouCam File API did not return a valid file_id. Response: ${JSON.stringify(fileRegData)}`);
+        logSecureYouCamError('Step 1 Missing file_id in File API response', fileRegData);
+        throw new Error(`Step 1 (File Registration) failed: YouCam File API did not return a valid file_id. Response: ${JSON.stringify(fileRegData)}`);
       }
 
       const fileId = fileItem.file_id;
@@ -245,48 +489,70 @@ export class YouCamService {
       const uploadMethod = uploadReq?.method || 'PUT';
 
       if (!uploadUrl) {
-        throw new Error(`YouCam File API did not provide an upload destination URL for file_id: ${fileId}`);
+        throw new Error(`Step 1 (File Registration) failed: YouCam File API did not provide an upload destination URL for file_id: ${fileId}`);
       }
+
+      logSecureYouCam('Step 1: File Registration Succeeded', {
+        fileId,
+        uploadMethod,
+        hasSignedUrl: Boolean(uploadUrl)
+      });
 
       // -------------------------------------------------------------
       // STEP 2: Upload raw image binary to the returned upload URL
       // -------------------------------------------------------------
+      const uploadHeaders: Record<string, string> = {};
+      if (uploadReq?.headers && typeof uploadReq.headers === 'object') {
+        for (const [k, v] of Object.entries(uploadReq.headers)) {
+          if (typeof v === 'string') uploadHeaders[k] = v;
+        }
+      }
+      if (!uploadHeaders['Content-Type'] && !uploadHeaders['content-type']) {
+        uploadHeaders['Content-Type'] = mimeType;
+      }
+
+      logSecureYouCam('Step 2: Binary Storage Upload Initiated', {
+        uploadMethod,
+        contentType: uploadHeaders['Content-Type'] || uploadHeaders['content-type'],
+        byteLength: buffer.length
+      });
+
       const uploadRes = await fetch(uploadUrl, {
         method: uploadMethod,
-        headers: {
-          'Content-Type': mimeType,
-          'Content-Length': buffer.length.toString()
-        },
+        headers: uploadHeaders,
         body: buffer,
         signal: controller.signal
       });
 
       if (!uploadRes.ok) {
-        throw new Error(`Failed to upload photo to YouCam storage (HTTP ${uploadRes.status}: ${uploadRes.statusText})`);
+        const uploadErrText = await uploadRes.text();
+        logSecureYouCamError('Step 2 Binary Storage Upload Failed', uploadErrText, {
+          httpStatus: uploadRes.status,
+          statusText: uploadRes.statusText
+        });
+        throw new Error(`Step 2 (Image Storage Upload) failed: HTTP ${uploadRes.status} (${uploadRes.statusText}) - ${uploadErrText.substring(0, 200)}`);
       }
+
+      logSecureYouCam('Step 2: Binary Storage Upload Succeeded', {
+        httpStatus: uploadRes.status
+      });
 
       // -------------------------------------------------------------
       // STEP 3: Create Skin Analysis Task
       // Endpoint: POST /s2s/v2.0/task/skin-analysis
       // -------------------------------------------------------------
       const taskEndpoint = `${baseUrl}/s2s/v2.0/task/skin-analysis`;
+      const validatedDstActions = normalizeDstActions(customActions);
       const taskBody = JSON.stringify({
         src_file_id: fileId,
-        file_id: fileId,
-        dst_actions: [
-          'wrinkle',
-          'pore',
-          'texture',
-          'acne',
-          'oiliness',
-          'redness',
-          'spots',
-          'moisture',
-          'dark_circles',
-          'radiance',
-          'firmness'
-        ],
+        dst_actions: validatedDstActions,
         format: 'json'
+      });
+
+      logSecureYouCam('Step 3: Creating Skin Analysis Task', {
+        endpoint: taskEndpoint,
+        src_file_id: fileId,
+        actionsCount: validatedDstActions.length
       });
 
       const taskRes = await fetch(taskEndpoint, {
@@ -307,7 +573,11 @@ export class YouCamService {
         } catch {
           // keep text
         }
-        throw new Error(`YouCam Task Creation returned HTTP ${taskRes.status} on ${taskEndpoint}: ${parsedError}`);
+        logSecureYouCamError('Step 3 Task Creation Failed', parsedError, {
+          httpStatus: taskRes.status,
+          endpoint: taskEndpoint
+        });
+        throw new Error(`Step 3 (Task Creation) failed: HTTP ${taskRes.status} on ${taskEndpoint}: ${parsedError}`);
       }
 
       const taskData = await taskRes.json();
@@ -318,8 +588,13 @@ export class YouCamService {
         taskData?.id;
 
       if (!liveTaskId) {
-        throw new Error(`YouCam Task Creation did not return a task_id. Response: ${JSON.stringify(taskData)}`);
+        logSecureYouCamError('Step 3 Missing task_id in Task response', taskData);
+        throw new Error(`Step 3 (Task Creation) failed: YouCam did not return a task_id. Response: ${JSON.stringify(taskData)}`);
       }
+
+      logSecureYouCam('Step 3: Task Creation Succeeded', {
+        taskId: liveTaskId
+      });
 
       tasks.set(liveTaskId, {
         taskId: liveTaskId,
@@ -428,6 +703,12 @@ export class YouCamService {
             ''
           ).toLowerCase();
 
+          logSecureYouCam('Step 4: Polling task status', {
+            taskId,
+            httpStatus: response.status,
+            remoteStatus
+          });
+
           if (remoteStatus === 'success' || remoteStatus === 'completed') {
             let rawResult = data?.result || data?.data?.result || data?.results || data?.data;
 
@@ -439,7 +720,7 @@ export class YouCamService {
                   rawResult = await downloadRes.json();
                 }
               } catch (e: any) {
-                console.warn('Could not download external result URL:', e.message);
+                console.warn('[YouCam S2S] Could not download external result URL:', e.message);
               }
             } else if (rawResult && typeof rawResult.url === 'string' && rawResult.url.startsWith('http')) {
               try {
@@ -448,24 +729,44 @@ export class YouCamService {
                   rawResult = await downloadRes.json();
                 }
               } catch (e: any) {
-                console.warn('Could not download external result.url:', e.message);
+                console.warn('[YouCam S2S] Could not download external result.url:', e.message);
               }
             }
 
             task.status = 'SUCCESS';
             task.progress = 100;
             task.result = this.mapYouCamResponse(taskId, rawResult || data);
+            logSecureYouCam('Step 4: Task Completed Successfully', {
+              taskId,
+              overallScore: task.result.overallScore
+            });
           } else if (remoteStatus === 'error' || remoteStatus === 'failed') {
             task.status = 'FAILED';
-            task.error = data?.error_message || data?.error || data?.message || 'YouCam processing failed.';
+            const detailedError = extractYouCamError(data);
+            task.error = `Step 4 (Skin Intelligence Processing): ${detailedError}`;
+            logSecureYouCamError('Step 4 Task Processing Error', detailedError, {
+              taskId,
+              remoteStatus,
+              data
+            });
           } else {
-            task.progress = data?.progress || data?.data?.progress || 60;
+            task.progress = data?.progress || data?.data?.progress || Math.min(85, (task.progress || 25) + 15);
           }
         } else if (response.status === 404) {
           task.status = 'FAILED';
-          task.error = `Task ${taskId} not found on YouCam server (HTTP 404).`;
+          task.error = `Step 4 (Status Check): Analysis task ${taskId} was not found on YouCam server (HTTP 404).`;
+          logSecureYouCamError('Step 4 Task Not Found', 'HTTP 404', { taskId });
+        } else {
+          const errText = await response.text();
+          task.status = 'FAILED';
+          task.error = `Step 4 (Status Check): YouCam polling failed with HTTP ${response.status}: ${errText.substring(0, 200)}`;
+          logSecureYouCamError('Step 4 Polling HTTP Error', errText, {
+            taskId,
+            httpStatus: response.status
+          });
         }
       } catch (e: any) {
+        logSecureYouCamError('Step 4 Polling Exception', e.message, { taskId });
         console.warn(`Polling YouCam API task ${taskId} warning:`, e.message);
       }
     }
@@ -720,7 +1021,7 @@ export class YouCamService {
 
     const darkCircles = this.extractMetric(
       res,
-      ['dark_circle', 'dark_circles', 'darkcircle', 'eyebags'],
+      ['dark_circle_v2', 'dark_circle', 'dark_circles', 'darkcircle', 'eyebags', 'eye_bag'],
       77,
       'Periorbital Tone',
       'Infraorbital chrominance contrast index measuring under-eye discoloration.',

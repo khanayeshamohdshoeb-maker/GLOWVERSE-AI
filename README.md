@@ -113,7 +113,7 @@ APP_URL="http://localhost:3000"
 ### B. S2S v2.0 Execution Workflow
 1. **File API Registration (`POST /s2s/v2.0/file`):** Registers image metadata (`content_type`, `file_name`, `file_size`) and securely obtains a pre-signed S3 storage upload URL alongside a unique `file_id`.
 2. **Binary Upload (`HTTP PUT`):** Uploads the raw binary image data directly to the pre-signed S3 URL with matching MIME type.
-3. **Skin Analysis Task Creation (`POST /s2s/v2.0/task/skin-analysis`):** Initiates asynchronous analysis using `src_file_id: file_id` and requested diagnostic actions (`wrinkle`, `pore`, `texture`, `acne`, `oiliness`, `redness`, `spots`, `moisture`, `dark_circles`, `radiance`, `firmness`).
+3. **Skin Analysis Task Creation (`POST /s2s/v2.0/task/skin-analysis`):** Initiates asynchronous analysis using `src_file_id: file_id` and requested official SD diagnostic actions (`wrinkle`, `pore`, `texture`, `acne`, `oiliness`, `redness`, `age_spot`, `moisture`, `dark_circle_v2`, `radiance`, `firmness`).
 4. **Task Polling & Result Retrieval (`GET /s2s/v2.0/task/skin-analysis/{task_id}`):** Polls status endpoint with `Authorization: Bearer <API_KEY>` until `task_status` is `"success"`. Parses either the inline `result` or fetches the downloadable result JSON.
 
 ### C. 8-Parameter Optical Mapping
@@ -122,11 +122,11 @@ APP_URL="http://localhost:3000"
 | **Skin Texture** | `texture` / `roughness` | Optical surface smoothness across cheeks and forehead |
 | **Surface Radiance** | `radiance` / `glow` | Specular vs diffuse reflectance index |
 | **Hydration Index** | `moisture` / `hydration` | Superficial stratum corneum moisture and plumping |
-| **Fine Line Visibility** | `wrinkles` (inverted) | Shallow dynamic expression lines around periorbital zone |
-| **Pore Clarity** | `pores` (inverted) | Follicular aperture perimeter in central T-zone |
+| **Fine Line Visibility** | `wrinkle` (inverted) | Shallow dynamic expression lines around periorbital zone |
+| **Pore Clarity** | `pore` (inverted) | Follicular aperture perimeter in central T-zone |
 | **Redness Balance** | `redness` (inverted) | Erythema and microvascular blush variance |
 | **Contour Firmness** | `firmness` | Jawline and cheek volume contour resilience |
-| **Periorbital Tone** | `dark_circles` (inverted) | Infraorbital chrominance contrast index |
+| **Periorbital Tone** | `dark_circle_v2` (inverted) | Infraorbital chrominance contrast index |
 
 ### D. Honest Simulation & Anti-Repetition Guarantee
 - **Live Mode:** Never silently drops to simulation if keys are missing or API fails; returns a clear status message.

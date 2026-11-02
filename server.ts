@@ -185,7 +185,7 @@ app.get('/api/skin/config', (_req: Request, res: Response) => {
 
 app.post('/api/skin/analyze', async (req: Request, res: Response) => {
   try {
-    const { imageDataUri, consent, mode, requestedMode, sampleId } = req.body;
+    const { imageDataUri, consent, mode, requestedMode, sampleId, dst_actions, actions } = req.body;
     if (!imageDataUri) {
       return res.status(400).json({ error: 'Image data is required.' });
     }
@@ -194,7 +194,14 @@ app.post('/api/skin/analyze', async (req: Request, res: Response) => {
     }
 
     const targetMode = (requestedMode || mode || 'auto') as 'live' | 'demo' | 'auto';
-    const task = await youCamService.submitAnalysis(imageDataUri, Boolean(consent), targetMode, sampleId);
+    const rawActions = dst_actions || actions;
+    const task = await youCamService.submitAnalysis(
+      imageDataUri,
+      Boolean(consent),
+      targetMode,
+      sampleId,
+      rawActions
+    );
     return res.status(202).json(task);
   } catch (err: any) {
     const isCredentialsMissing = err.message?.includes('YOUCAM_API_KEY') || err.message?.includes('temporarily unavailable');

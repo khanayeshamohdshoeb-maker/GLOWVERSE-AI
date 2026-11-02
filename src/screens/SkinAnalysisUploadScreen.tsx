@@ -79,7 +79,15 @@ export const SkinAnalysisUploadScreen: React.FC = () => {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) validateAndSetFile(file);
+    e.target.value = '';
   };
+
+  const isFaceAngleError = Boolean(
+    errorMessage &&
+    (errorMessage.toLowerCase().includes('turned or tilted') ||
+     errorMessage.toLowerCase().includes('large_face_angle') ||
+     errorMessage.toLowerCase().includes('face angle'))
+  );
 
   const validateAndSetFile = (file: File) => {
     setErrorMessage(null);
@@ -163,7 +171,8 @@ export const SkinAnalysisUploadScreen: React.FC = () => {
       );
 
       let attempts = 0;
-      const maxAttempts = 15;
+      const maxAttempts = scanMode === 'live' ? 30 : 15;
+      const intervalMs = scanMode === 'live' ? 1500 : 1000;
 
       const pollInterval = setInterval(async () => {
         attempts++;
@@ -206,14 +215,14 @@ export const SkinAnalysisUploadScreen: React.FC = () => {
             throw new Error(pollData.error || 'Analysis processing failed. Please try another image.');
           } else if (attempts >= maxAttempts) {
             clearInterval(pollInterval);
-            throw new Error('Analysis request timed out. Please try again or switch to Demo Mode.');
+            throw new Error('Analysis request timed out waiting for AI cloud engine. Please try again or switch to Demo Mode.');
           }
         } catch (e: any) {
           clearInterval(pollInterval);
           setLoading(false);
           setErrorMessage(e.message || 'Error occurred during analysis polling.');
         }
-      }, 1000);
+      }, intervalMs);
 
     } catch (err: any) {
       setLoading(false);
@@ -339,16 +348,16 @@ export const SkinAnalysisUploadScreen: React.FC = () => {
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 text-xs text-[#302B27]/80">
           <div className="flex items-start gap-2">
+            <Smile className="w-4 h-4 text-[#96734C] shrink-0 mt-0.5" />
+            <span>Face directly forward: keep head level, avoid tilting or profile views.</span>
+          </div>
+          <div className="flex items-start gap-2">
             <Sun className="w-4 h-4 text-[#96734C] shrink-0 mt-0.5" />
             <span>Natural diffused daylight; avoid harsh flash glare.</span>
           </div>
           <div className="flex items-start gap-2">
-            <Smile className="w-4 h-4 text-[#96734C] shrink-0 mt-0.5" />
-            <span>Maintain a neutral, relaxed facial expression.</span>
-          </div>
-          <div className="flex items-start gap-2">
             <Glasses className="w-4 h-4 text-[#96734C] shrink-0 mt-0.5" />
-            <span>Remove eyeglasses and pull back stray hair.</span>
+            <span>Remove eyeglasses and pull back stray hair from forehead.</span>
           </div>
           <div className="flex items-start gap-2">
             <CheckCircle2 className="w-4 h-4 text-[#96734C] shrink-0 mt-0.5" />
@@ -359,34 +368,90 @@ export const SkinAnalysisUploadScreen: React.FC = () => {
 
       {/* Upload Box / Dropzone */}
       <div className="bg-[#FFFFFF] border border-[#E8DCCB] rounded-2xl p-6 sm:p-8 shadow-xs space-y-6">
-        
+
+        {/* Hidden File Input - always mounted so fileInputRef works reliably whether in preview or dropzone state */}
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleFileChange}
+          accept="image/jpeg,image/png,image/webp"
+          className="hidden"
+        />
+
         {errorMessage && (
-          <div className="p-4 bg-red-50 border border-red-200 text-red-800 text-xs rounded-xl flex items-start justify-between gap-3">
-            <div className="flex items-start gap-2">
-              <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
-              <div>
-                <strong className="block font-semibold">Analysis Notice</strong>
-                <p className="mt-0.5 leading-relaxed">{errorMessage}</p>
+          <div className="p-4 sm:p-5 bg-[#FFFBF5] border border-amber-300/80 text-amber-950 text-xs rounded-xl space-y-3.5 shadow-xs">
+            <div className="flex items-start gap-3">
+              <div className="p-1.5 rounded-lg bg-amber-100 text-amber-800 shrink-0 mt-0.5">
+                <AlertCircle className="w-4 h-4" />
+              </div>
+              <div className="space-y-1.5 flex-1">
+                <div className="flex items-center justify-between">
+                  <strong className="block font-serif text-sm text-amber-950 tracking-wide">
+                    {isFaceAngleError
+                      ? 'Front-Facing Portrait Required (YouCam Facial Landmark Alignment)'
+                      : errorMessage.includes('No human face') || errorMessage.includes('error_no_face')
+                      ? 'No Face Detected in Portrait'
+                      : 'Skin Analysis Notice'}
+                  </strong>
+                  <button
+                    type="button"
+                    onClick={() => setErrorMessage(null)}
+                    className="text-amber-800/70 hover:text-amber-950 text-xs font-medium cursor-pointer"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+
+                <p className="leading-relaxed text-amber-900/90 font-sans">
+                  {errorMessage}
+                </p>
+
+                {isFaceAngleError && (
+                  <div className="mt-2.5 p-3.5 bg-white/90 rounded-lg border border-amber-200/90 space-y-2 text-[11px] text-[#302B27]/85">
+                    <span className="font-semibold text-amber-950 uppercase tracking-wider text-[10px] block">
+                      Instructions for YouCam Optical Zone Calibration:
+                    </span>
+                    <ul className="list-disc list-inside space-y-1.5 pl-0.5">
+                      <li>
+                        <strong>Front-Facing Gaze:</strong> Look directly into the camera lens with your head centered (face angle within ±15° of center; avoid three-quarter turns or side profile views).
+                      </li>
+                      <li>
+                        <strong>Level Posture:</strong> Keep your head straight and upright (avoid tilting your head to the side, looking upwards, or pitching downward).
+                      </li>
+                      <li>
+                        <strong>Facial Zone Visibility:</strong> Ensure forehead, cheeks, nose, and periorbital eye zones are evenly lit and not obscured by hair, glasses, or shadows.
+                      </li>
+                    </ul>
+                  </div>
+                )}
               </div>
             </div>
-            {errorMessage.includes('temporarily unavailable') && (
+
+            {/* Strict Quality Actions: Do NOT bypass YouCam validation or generate simulated scores */}
+            <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-amber-200/70">
               <button
                 type="button"
-                onClick={() => {
-                  setScanMode('demo');
-                  setErrorMessage(null);
-                  handleStartAnalysis();
-                }}
-                className="px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-900 rounded-lg text-xs font-semibold shrink-0 cursor-pointer"
+                onClick={() => fileInputRef.current?.click()}
+                className="px-3.5 py-2 bg-[#302B27] hover:bg-[#1a1715] text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shrink-0 cursor-pointer transition-colors shadow-xs"
               >
-                Run with Demo Mode
+                <Upload className="w-3.5 h-3.5 text-[#C6A77D]" />
+                <span>Select Another Front-Facing Portrait</span>
               </button>
-            )}
+
+              <button
+                type="button"
+                onClick={handleStartAnalysis}
+                className="px-3.5 py-2 bg-white hover:bg-amber-100/70 border border-amber-300 text-amber-950 rounded-lg text-xs font-medium flex items-center gap-1.5 shrink-0 cursor-pointer transition-colors"
+              >
+                <RefreshCw className="w-3.5 h-3.5 text-[#96734C]" />
+                <span>Retry Analysis</span>
+              </button>
+            </div>
           </div>
         )}
 
         {selectedImage ? (
-          /* Preview Mode */
+          /* Preview Mode - Keeps original user photo preview intact */
           <div className="space-y-4">
             <div className="relative max-w-sm mx-auto rounded-xl overflow-hidden border border-[#E8DCCB] bg-[#F8F4ED]">
               <img
@@ -394,8 +459,17 @@ export const SkinAnalysisUploadScreen: React.FC = () => {
                 alt="Selected portrait preview"
                 className="w-full h-80 object-cover"
               />
+
+              {/* Status Badge on Portrait */}
+              {isFaceAngleError && (
+                <div className="absolute top-3 left-3 bg-[#302B27]/90 backdrop-blur-xs text-amber-300 text-[11px] font-medium px-2.5 py-1 rounded-md border border-amber-500/40 flex items-center gap-1.5 shadow-md">
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Face Angle Rejection (Tilted / Turned)</span>
+                </div>
+              )}
+
               <button
-                onClick={() => { setSelectedImage(null); setSelectedSampleId(null); }}
+                onClick={() => { setSelectedImage(null); setSelectedSampleId(null); setErrorMessage(null); }}
                 className="absolute top-3 right-3 p-1.5 rounded-full bg-black/60 text-white hover:bg-black transition-colors cursor-pointer"
                 title="Remove photo"
               >
@@ -413,9 +487,35 @@ export const SkinAnalysisUploadScreen: React.FC = () => {
                 </div>
               )}
             </div>
-            <div className="text-center text-xs text-[#302B27]/60">
-              Photo loaded and validated. Ready for non-clinical cosmetic analysis.
-            </div>
+
+            {/* Guidance strip below preview */}
+            {isFaceAngleError ? (
+              <div className="p-3 bg-amber-50/80 rounded-xl border border-amber-200/80 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+                <span className="text-amber-950">
+                  <strong className="block text-amber-900 font-semibold">Original photo retained for review.</strong>
+                  Please select a straight, front-facing portrait to proceed with YouCam AI analysis.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="px-3.5 py-1.5 bg-[#302B27] hover:bg-[#1a1715] text-white rounded-lg text-xs font-semibold shrink-0 cursor-pointer flex items-center gap-1.5 shadow-xs transition-colors"
+                >
+                  <Upload className="w-3.5 h-3.5 text-[#C6A77D]" />
+                  <span>Choose Another Photo</span>
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between px-2 text-xs text-[#302B27]/70">
+                <span>Photo loaded and validated. Ready for non-clinical cosmetic analysis.</span>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="text-[#96734C] hover:text-[#302B27] font-medium underline cursor-pointer"
+                >
+                  Change Photo
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           /* Dropzone Mode */
@@ -430,13 +530,6 @@ export const SkinAnalysisUploadScreen: React.FC = () => {
                 : 'border-[#E8DCCB] hover:border-[#96734C] bg-[#F8F4ED]/30'
             }`}
           >
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleFileChange}
-              accept="image/jpeg,image/png,image/webp"
-              className="hidden"
-            />
             <div className="w-14 h-14 rounded-full bg-[#FFFFFF] border border-[#E8DCCB] flex items-center justify-center text-[#96734C] mx-auto shadow-xs">
               <Upload className="w-6 h-6" />
             </div>
@@ -542,18 +635,53 @@ export const SkinAnalysisUploadScreen: React.FC = () => {
                   : 'Synthesizing surface reflectance metrics across 8 parameters...'}
               </p>
             </div>
+          ) : isFaceAngleError ? (
+            <div className="space-y-2">
+              <div className="flex flex-col sm:flex-row items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full sm:flex-1 py-3.5 bg-[#302B27] hover:bg-[#433C37] text-white text-xs font-semibold uppercase tracking-widest rounded-lg transition-all cursor-pointer shadow-md flex items-center justify-center gap-2"
+                >
+                  <Upload className="w-4 h-4 text-[#C6A77D]" />
+                  <span>Select Another Front-Facing Portrait</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleStartAnalysis}
+                  disabled={!selectedImage || !consentChecked}
+                  className="w-full sm:w-auto px-5 py-3.5 bg-white hover:bg-[#F8F4ED] border border-[#E8DCCB] text-[#302B27] text-xs font-semibold uppercase tracking-widest rounded-lg transition-all cursor-pointer shadow-xs flex items-center justify-center gap-2 disabled:opacity-50"
+                  title="Retry analysis with current photo"
+                >
+                  <RefreshCw className="w-4 h-4 text-[#96734C]" />
+                  <span>Retry Scan</span>
+                </button>
+              </div>
+              <p className="text-[11px] text-center text-[#302B27]/60">
+                YouCam facial analysis requires a straight front-facing portrait (within ±15° tolerance) with head level.
+              </p>
+            </div>
           ) : (
             <button
               onClick={handleStartAnalysis}
               disabled={!selectedImage || !consentChecked}
               className="w-full py-3.5 bg-[#302B27] hover:bg-[#433C37] disabled:bg-[#302B27]/40 text-white text-xs font-semibold uppercase tracking-widest rounded-lg transition-all cursor-pointer shadow-md disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
-              <Sparkles className="w-4 h-4 text-[#C6A77D]" />
-              <span>
-                {scanMode === 'live'
-                  ? 'Analyze with Live YouCam API & Recommend Formulations'
-                  : 'Analyze Skin & Formulate Recommendations (Demo)'}
-              </span>
+              {errorMessage ? (
+                <>
+                  <RefreshCw className="w-4 h-4 text-[#C6A77D]" />
+                  <span>Retry Live YouCam Scan</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4 text-[#C6A77D]" />
+                  <span>
+                    {scanMode === 'live'
+                      ? 'Analyze with Live YouCam API & Recommend Formulations'
+                      : 'Analyze Skin & Formulate Recommendations (Demo)'}
+                  </span>
+                </>
+              )}
             </button>
           )}
         </div>
